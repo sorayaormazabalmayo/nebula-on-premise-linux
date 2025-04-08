@@ -34,7 +34,7 @@ func newServeCommand(logger log.Logger) *ff.Command {
 	cfg := &server.Config{}
 
 	// Create the flag set and declare all flags here.
-	fs := ff.NewFlagSet("serve-and-update")
+	fs := ff.NewFlagSet("serve")
 	_ = fs.String(0, "config", "", "config file in yaml format")
 	fs.StringVar(&cfg.HTTPAddr, 0, "http-addr", "localhost:8000", "HTTP address")
 	fs.StringVar(&cfg.InternatHTTPAddr, 0, "internal-http-addr", "localhost:9000", "Internal HTTP address")
@@ -43,7 +43,7 @@ func newServeCommand(logger log.Logger) *ff.Command {
 	fs.StringVar(&cfg.MetadataURL, 0, "metadata-url", "https://sorayaormazabalmayo.github.io/TUF_Repository_YubiKey_Vault/metadata", "Metadata URL")
 
 	cmd := &ff.Command{
-		Name:      "serve-and-update",
+		Name:      "serve",
 		ShortHelp: "Run both serve and update concurrently",
 		Flags:     fs,
 		Exec: func(ctx context.Context, args []string) error {
