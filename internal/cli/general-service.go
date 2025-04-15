@@ -63,6 +63,14 @@ func newServeCommand(logger log.Logger) *ff.Command {
 					logger.Error("failed to create server", "error", err)
 					return
 				}
+
+				// Listen for context cancellation
+				go func() {
+					<-ctx.Done()
+					logger.Info("shutdown signal received, stopping server")
+					s.Shutdown() // This should gracefully stop the server
+				}()
+
 				if err := s.Run(); err != nil {
 					logger.Error("server error", "error", err)
 				}
