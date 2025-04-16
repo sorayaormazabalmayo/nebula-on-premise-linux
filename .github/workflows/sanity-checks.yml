@@ -1,0 +1,41 @@
+name: 'Sanity checks before merging PR'
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  push: 
+    branches:
+      - main  # ✅ Fixed missing space after `-`
+
+jobs:
+  # Job 1: Run when triggered by a Pull Request
+  sanity-checks-for-pr: 
+    name: Sanity Checks Before Merging PR
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'  # ✅ Runs only for PR events
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      TZ: Europe/Madrid  # Set the timezone
+    steps: 
+      - name: Simulating sanity checks for PR
+        run: |
+          echo "🔍 Running sanity checks before merging PR... 🔍"
+
+  # Job 2: Run when triggered by a Push
+  sanity-checks-for-push: 
+    name: Sanity Checks Before Pushing to Main
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'  # ✅ Runs only for push events
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      TZ: Europe/Madrid  # Set the timezone
+    steps: 
+      - name: Simulating sanity checks for Push
+        run: |
+          echo "🚀 Running sanity checks after pushing changes... 🚀 "

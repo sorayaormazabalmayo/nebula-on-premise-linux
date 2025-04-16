@@ -1,0 +1,296 @@
+name: 'Release Updates to Google Artifact Registry'
+
+on:
+  workflow_dispatch:
+  push: 
+    tags: 
+      - '*' # Workflow is trigered when a push is made with a tag
+
+jobs:
+  # Job 1: Check that the release version is correct
+  well-tag-triggered-job:
+    name: 'Check tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      TZ: Europe/Madrid  # Set the timezone to your local timezone
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      # Step 1: Clone the source repository
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # Step 2: Display tag information
+      - name: Get Tag Details
+        run: |
+          echo "Tag Name: ${{ github.ref_name }}"
+          echo "Full Reference: ${{ github.ref }}"
+          echo "Event: ${{ github.event_name }}"
+
+          ## Changing the variable name for the tag
+          echo "tag=${{github.ref_name}}">>$GITHUB_ENV
+          echo "The Tag name is ${{env.tag}}"
+
+          ## Getting the repository name
+          repo_name="${{ github.repository }}"
+          echo "repo_name=$repo_name" >> $GITHUB_ENV
+
+      # Step 3: Validate the Tag Format (Date and Commit SHA)
+      - name: Validate the Tag Format (Date and Commit SHA)
+        run: |
+          # Extracting the current date in YYYY.MM.DD format
+          current_date=$(date -u +"%Y.%m.%d")  # ✅ Fixed date format
+          echo "Current Date: $current_date"
+
+          # Extract commit hash of HEAD
+          commit_hash=$(git rev-parse --short HEAD)
+          echo "Current Commit Hash: $commit_hash"
+
+          # Extract date and commit from the tag
+          tag="${{ env.tag }}"  # ✅ Ensure env variable reference is correct
+          echo "Validating Tag: $tag"
+
+          # ✅ Regex to check tag format: vYYYY.MM.DD-shaabcdefg
+          if [[ "$tag" =~ ^v([0-9]{4}\.[0-9]{2}\.[0-9]{2})\-sha.([a-f0-9]+)$ ]]; then
+            tag_date="${BASH_REMATCH[1]}"
+            tag_commit="${BASH_REMATCH[2]}"
+
+            echo "Extracted Tag Date: $tag_date"
+            echo "Extracted Tag Commit Hash: $tag_commit"
+
+            # Compare extracted date with current :
+            if [[ "$tag_date" != "$current_date" ]]; then
+              echo "❌ ERROR: Tag date ($tag_date) does not match today's date ($current_date)!"
+              exit 1
+            fi
+
+            # Compare extracted commit hash with actual commit hash
+            if [[ "$tag_commit" != "$commit_hash" ]]; then
+              echo "❌ ERROR: Tag commit hash ($tag_commit) does not match the current commit ($commit_hash)!"
+              exit 1
+            fi
+
+            echo "✅ Tag validation successful!"
+          else
+            echo "❌ ERROR: Tag format is incorrect! Expected format: vYYYY.MM.DD-shaabcdefg"
+            exit 1
+          fi
+
+  # Job 2: Job for uploading a release to GitHub and an artifact to GAR
+  uploading-release-to-GitHub-and-GAR:
+    name: 'Making release to GitHub and GAR'
+    runs-on: ubuntu-latest
+    needs: well-tag-triggered-job
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      TZ: Europe/Madrid  # Set the timezone to your local timezone
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps: 
+
+      # Step 1: Clone the source repository
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # Step 2 : Configure Go for Private odules
+      - name: Simulating that some testings and checks are done
+        run: |
+          # Getting the tag name
+          echo "tag=${{github.ref_name}}">>$GITHUB_ENV
+          echo "Simulating that some testings and checks are done"
+
+          ## Getting the repository name
+          repo_name=$(basename "${{ github.repository }}")
+          echo "repo_name=$repo_name" >> $GITHUB_ENV
+
+      # Step 3: Getting the .zip that wants to be relased 
+      - name: Getting the -zip 
+        run: |
+         zip -r nebula-on-premise-linux.zip bin/nebula-on-premise-linux config/
+              
+      # Step 4: Compute the SHA256
+      - name: Compute the SHA256 of the .zip
+        run: |
+          zip_name="${{env.repo_name}}.zip"
+          echo "ZIP file name: $zip_name"
+          echo "zip_name=$zip_name" >> $GITHUB_ENV
+          echo "Computing SHA256 checksum of the .zip"
+          digest=$(sha256sum "$zip_name" | awk '{ print $1 }')
+          echo "digest=$digest" >> $GITHUB_ENV
+          echo "SHA256 checksum is: $digest"
+        
+      # Step 5: Verifying GitHub Token
+      - name: Verify GITHUB_TOKEN
+        run: |
+          if [ -z "${{ secrets.GITHUB_TOKEN }}" ]; then
+              echo "Error: GITHUB_TOKEN is not set."
+              exit 1
+          else
+              echo "GITHUB_TOKEN is available."
+          fi
+      # Step 6: Create a release
+      - name: Create a GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ env.tag }}
+          release_name: "nebula-on-premise-linux ${{ env.tag }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            Release generated by GitHub Actions.
+            This includes the artifacts of bin.
+          draft: false
+          prerelease: false
+
+      # Step 7: Upload the ZIP file as a release asset
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.zip_name }}
+          asset_name: ${{ env.zip_name }}
+          asset_content_type: application/zip
+          
+      # Step 8: Login to Google Cloud Registry
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with: 
+          token_format: access_token
+          workload_identity_provider: projects/185640679849/locations/global/workloadIdentityPools/github/providers/github-prov
+          service_account: github-actions-auth@polished-medium-445107-i9.iam.gserviceaccount.com
+          access_token_lifetime: '600s'
+
+      # Step 9: Setting environment variables
+      - name: Set Environment Variables
+        run: |
+          echo "Setting environment variables..."
+          echo "service_name=$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f2)" >> $GITHUB_ENV
+
+      # Step 10: Upload each built artifact to Google Artifact Registry
+      - name: Upload artifacts from bin to Google Artifact Registry
+        id: pushing-GAR
+        run: |
+          echo "Uploading each built artifact to Google Artifact Registry..."
+          echo "Uploading service name ${{ env.service_name }}"
+
+          echo "Original version: ${{ env.tag }}"
+
+          gcloud artifacts generic upload \
+            --repository=nebula-storage \
+            --location=europe-southwest1 \
+            --project=polished-medium-445107-i9 \
+            --package="${{ env.service_name }}" \
+            --version="${{ env.tag }}" \
+            --source="${{ env.zip_name }}"
+
+          echo "Uploaded $artifact_name to Google Artifact Registry"
+          echo "Successfully uploaded all artifacts to Google Artifact Registry"
+      
+      # Step 11: Getting the SHA of the uploaded file to GAR
+      - name: Getting the SHA of the uploaded file to GAR
+        id: getting-GAR-digest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+
+          # Create GAR directory
+          mkdir -p GAR
+          echo "Downloading artifact from Google Artifact Registry..."
+
+          # Download the artifact from Google Artifact Registry
+          gcloud artifacts files download \
+            --project=polished-medium-445107-i9 \
+            --location=europe-southwest1 \
+            --repository=nebula-storage \
+            --destination=./GAR/ \
+            "${{ env.service_name }}:${{ env.tag }}:${{ env.zip_name }}" \
+            --verbosity=debug
+
+          # Detect the actual downloaded filename
+          downloaded_file=$(ls -1 GAR/ | head -n 1)  # Get the first file in GAR/
+          
+          if [ -z "$downloaded_file" ]; then
+              echo "Error: No file found in GAR/ after download."
+              exit 1
+          fi
+
+          # Fix potential encoding issue (%3A instead of ":")
+          decoded_file=$(echo "$downloaded_file" | sed 's/%3A/:/g')
+
+          # Rename the file if needed
+          if [[ "$downloaded_file" != "$decoded_file" ]]; then
+              mv "GAR/$downloaded_file" "GAR/$decoded_file"
+              downloaded_file="$decoded_file"
+          fi
+
+          # Ensure file is named correctly for SHA256 computation
+          final_zip_path="GAR/${{ env.zip_name }}"
+          mv "GAR/$downloaded_file" "$final_zip_path"
+
+          echo "Downloaded ZIP file from GAR: $final_zip_path"
+
+          # Compute SHA256 of the downloaded ZIP file
+          echo "Computing SHA256 of the downloaded ZIP..."
+          gar_downloaded_sha256=$(sha256sum "$final_zip_path" | awk '{ print $1 }')
+
+          if [ -z "$gar_downloaded_sha256" ]; then
+              echo "Error: Failed to compute SHA256 of the downloaded ZIP"
+              exit 1
+          fi
+
+          echo "GAR Downloaded ZIP SHA256: $gar_downloaded_sha256"
+          echo "gar_sha256=$gar_downloaded_sha256" >> $GITHUB_ENV
+
+      # Step 12: Getting the digest of the GitHub Release
+      - name: Getting the digest of the GitHub Release
+        id: getting-GitHub-Release-digest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+      
+          # Get the latest release asset URL for nebula-on-premise-linux.zip
+          ASSET_URL=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
+            | jq -r '.assets[] | select(.name == "nebula-on-premise-linux.zip") | .browser_download_url')
+      
+          if [ -z "$ASSET_URL" ]; then
+              echo "Error: neula-on-premise-linux.zip not found in the latest release!"
+              exit 1
+          fi
+      
+          echo "Downloading nebula-on-premise-linux.zip from: $ASSET_URL"
+          wget -O nebula-on-premise-linux.zip "$ASSET_URL"
+      
+          # Compute SHA256 checksum of the ZIP file
+          echo "Computing SHA256 of nebula-on-premise-linux.zip..."
+          github_zip_sha256=$(sha256sum "nebula-on-premise-linux.zip" | awk '{ print $1 }')
+      
+          if [ -z "$github_zip_sha256" ]; then
+              echo "Error: Failed to compute SHA256 of nebula-on-premise-linux.zip"
+              exit 1
+          fi
+      
+          echo "GitHub Release nebula-on-premise-linux.zip SHA256: $github_zip_sha256"
+          echo "github_release_sha256=$github_zip_sha256" >> $GITHUB_ENV
+    
+    # Step 13: Verifying the SHA256 checksum of GAR vs. GitHub Release
+      - name: Verifying SHA256 Checksums
+        id: verifying-digests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔍 Comparing SHA256 digests..."
+
+          echo "GAR SHA256: ${{ env.gar_sha256 }}"
+          echo "GitHub Release SHA256: ${{ env.github_release_sha256 }}"
+
+          if [[ "${{ env.gar_sha256 }}" == "${{ env.github_release_sha256 }}" ]]; then
+            echo "✅ Hash validation successful ✅"
+          else
+            echo "❌ Hash validation failed ❌"
+            exit 1
+          fi

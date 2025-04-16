@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Nebula</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel ="icon" type="image/svg+xml" href="static/images/logo-nebula.svg">
+<link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Montserrat">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<style>
+    /* Blue horizontal line */
+    .blue-line {
+        width: 100%;
+        height: 5px;
+        background-color: #007bff;
+        margin-top: 10px;
+    }
+
+    /* Update button styling */
+    #updateButton {
+        display: none; /* Initially hidden */
+        margin-top: 20px;
+        background-color: #28a745;
+        color: white;
+        padding: 10px 20px;
+        font-size: 16px;
+        border: none;
+        cursor: pointer;
+        border-radius: 5px;
+    }
+
+    #updateButton:hover {
+        background-color: #218838;
+    }
+</style> 
+</head>
+<body class="w3-content" style="max-width:1200px">
+
+<!-- Sidebar/menu -->
+<nav class="w3-sidebar w3-bar-block w3-white w3-collapse w3-top" style="z-index:3;width:250px" id="mySidebar">
+    <div class="w3-container w3-display-container w3-padding-16">
+      <i onclick="w3_close()" class="fa fa-remove w3-hide-large w3-button w3-display-topright"></i>
+      <img src="static/images/logo-nebula.svg" alt="Nebula Logo" style="width:100%; max-width:150px;">
+      <svg width="300" height="50" viewBox="0 0 300 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <text x="10" y="40" font-family="Arial, sans-serif" font-size="30" font-weight="bold" fill="black">
+            SALTO <tspan font-weight="normal">Nebula</tspan>
+        </text>
+    </svg>
+    </div>
+    <div class="w3-padding-64 w3-large w3-text-grey" style="font-weight:bold">
+      <a href="#index.html" class="w3-bar-item w3-button">Home</a>
+      <a href="#" class="w3-bar-item w3-button">Units</a>
+      <a href="#" class="w3-bar-item w3-button">Devices</a>
+      <a href="#" class="w3-bar-item w3-button">Users</a>
+      <a href="#" class="w3-bar-item w3-button">Access</a>
+      <a href="#" class="w3-bar-item w3-button">Activity</a>
+      <a href="#" class="w3-bar-item w3-button">Settings</a>
+      <a href="static/actualizaciones.html" class="w3-bar-item w3-button">Updates</a>
+    </div>
+</nav>
+
+<!-- Main content -->
+<div class="w3-main" style="margin-left:260px; padding:20px;">
+    <h1 class="w3-text-blue">Home</h1>
+</div>
+
+<!-- Main Content Area -->
+<div class="w3-main" style="margin-left:260px; padding:20px; text-align:center;">
+    <h1> Nebula Version 1</h1>
+
+    <!-- Image -->
+    <img src="static/images/door-placeholder.png" alt="Nebula Access Control" style="max-width:100%; height:auto; margin-top:10px;">
+
+    <!-- Warning Message (Initially Hidden) -->
+    <p id="updateWarning" style="display: none; color: red; font-weight: bold; margin-top: 10px;">
+        ⚠️ Triggering the update can take down the service for some time.
+    </p>
+
+    <!-- Update Button (Initially Hidden) -->
+    <button id="updateButton" onclick="triggerUpdate()">Update Available! Click to Apply</button>
+</div>
+
+<script>
+// Open and close sidebar
+function w3_open() {
+  document.getElementById("mySidebar").style.display = "block";
+}
+
+function w3_close() {
+  document.getElementById("mySidebar").style.display = "none";
+}
+
+function checkForUpdate() {
+    fetch("/check-update")  
+    .then(response => response.json())
+    .then(data => {
+        console.log("Update Check Response:", data); // Debugging output
+
+        if (data.update_available === 1) {  
+            document.getElementById("updateButton").style.display = "block"; 
+            document.getElementById("updateWarning").style.display = "block"; 
+        }
+    })
+    .catch(error => console.error("Error checking for update:", error));
+}
+
+// Function to trigger the update
+function triggerUpdate() {
+
+    fetch('/run-update', { method: 'POST' }) // Send request to backend to apply update 
+    alert("Update started! The page will reload soon.");
+    document.getElementById("updateButton").style.display = "none";
+    document.getElementById("updateWarning").style.display="none";
+
+    checkServerStatus(); 
+                
+}
+
+// Function to repeatedly check if /nebula is accessible. This will be able to relaod the page 
+// when there is an update in the index.html of the server. 
+function checkServerStatus() {
+    let attempts = 0;
+    const maxAttempts = 30; // Maximum attempts before giving up (e.g., 30 seconds)
+
+    const interval = setInterval(() => {
+        fetch('http://localhost:8010/nebula', { method: 'GET' })
+        .then(response => {
+            if (response.status === 200) { // Server is back online
+                clearInterval(interval); // Stop checking
+                console.log("Server is back online. Reloading page...");
+                location.reload(); // Reload the page
+            }
+        })
+        .catch(error => {
+            console.warn("Server still offline, retrying...", error);
+        });
+
+        attempts++;
+        if (attempts >= maxAttempts) {
+            clearInterval(interval); // Stop checking after max attempts
+            console.error("Server did not come back online within the expected time.");
+            alert("Update process took too long. Please refresh manually.");
+        }
+    }, 2000); // Check every 2 seconds
+}
+
+// Periodically check for updates every 5 minutes
+setInterval(checkForUpdate, 1 * 1 * 1000); // 5 minutes in milliseconds
+checkForUpdate(); // Check immediately on page load
+</script>
+
+</body>
+</html>

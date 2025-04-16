@@ -1,0 +1,19 @@
+.idea/
+.vscode/
+.history/
+.reports/
+## /bin
+cmd/*/debug
+cmd/*/debug.test
+cmd/*/main
+cmd/*/main.test
+build/container/*-linux-amd64
+build/container/*-darwin-amd64
+build/container/*-windows-amd64.exe
+*.yaml
+!sqlboiler.yaml
+.gitconfig
+.devcontainer/
+go.work.sum
+public-key.*
+private-key.*
