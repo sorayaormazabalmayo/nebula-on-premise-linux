@@ -81,51 +81,56 @@ func main() {
 	// Create a MultiWriter to log to both stdout and file
 	multiWriter := io.MultiWriter(os.Stdout, logFile)
 
-	// Create logger 1 for TUF that writes to both destinations
-	stdLogger1 := log.New(multiWriter, "Nebula TUF Client Logger:", log.LstdFlags)
+	// Create logger 2 for applying releases
+	stdLogger2 := log.New(multiWriter, "ApplyReleaseImpl:", log.LstdFlags)
+
+	// Set logger to use both stdout and file
+	metadata.SetLogger(stdr.New(stdLogger2))
+
+	// Retrieve and use logger
+	ApplyReleaseImplLogger := metadata.GetLogger()
+
+	// Create logger 1 for checking updates
+
+	stdLogger1 := log.New(multiWriter, "CheckForUpdateImpl: ", log.LstdFlags)
 
 	// Set logger to use both stdout and file
 	metadata.SetLogger(stdr.New(stdLogger1))
 
+	CheckForUpdateImplLogger := metadata.GetLogger()
+
 	// Set verbosity level
 	stdr.SetVerbosity(verbosity)
-
-	// Retrieve and use logger
-	tufLog := metadata.GetLogger()
-
-	// Creating logger 2 for getting information of other staff not related as much to TUF
-	generalLog := log.New(multiWriter, "Updater General Logger: ", log.LstdFlags)
 
 	// initialize environment - temporary folders, etc.
 	metadataDir, err := InitEnvironment()
 	if err != nil {
-		tufLog.Error(err, "Failed to initialize environment")
+		CheckForUpdateImplLogger.Error(err, "Failed to initialize environment")
 	}
 
 	// initialize client with Trust-On-First-Use
 	err = InitTrustOnFirstUse(metadataDir)
 	if err != nil {
-		tufLog.Error(err, "Trust-On-First-Use failed")
+		CheckForUpdateImplLogger.Error(err, "Trust-On-First-Use failed")
 	}
 
 	// getting the current version
 	currentVersion, err := readCurrentVersion()
 
 	if err != nil {
-		generalLog.Printf("❌There has been an error wile reading the current version: %v❌\n", err)
+		CheckForUpdateImplLogger.Error(err, "❌There has been an error while reading the current version❌")
 	}
 
-	generalLog.Printf("🟣Current Version is %s🟣\n", currentVersion)
+	CheckForUpdateImplLogger.Info("🟣Current Version is %s🟣", currentVersion)
 
 	// getting the previous version folder
 	previousVersion, err := getPreviousVersion(currentVersion)
 
 	if err != nil {
-		generalLog.Printf("❌There has been an error wile reading the previous version❌\n")
-		generalLog.Printf("err:")
+		CheckForUpdateImplLogger.Error(err, "❌There has been an error while reading the previous version❌")
 	}
 
-	generalLog.Printf("🟣Previous Version is %s🟣\n", previousVersion)
+	CheckForUpdateImplLogger.Info("🟣Previous Version is %s🟣", previousVersion)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -141,20 +146,20 @@ func main() {
 			_, foundDesiredTargetIndexLocally, err := DownloadTargetIndex(metadataDir, service)
 
 			if err != nil {
-				tufLog.Error(err, "Download index file failed")
+				CheckForUpdateImplLogger.Error(err, "Download index file failed")
 			}
 
 			// if there is a new one, this will mean that is initializing for the first time or that there is a new update
 			if foundDesiredTargetIndexLocally == 0 && err == nil {
 				err := setUpdateStatus(1)
 				if err != nil {
-					generalLog.Printf("❌ Error updating update_status.json:", err)
+					CheckForUpdateImplLogger.Error(err, "❌ Error updating update_status.json")
 				} else {
-					generalLog.Printf("✅ Successfully set update_status.json to update_available: 1")
+					CheckForUpdateImplLogger.Info("✅Successfully set update_status.json to update_available: 1✅")
 				}
 
 			} else {
-				generalLog.Printf("The local index file is the most updated one\n")
+				CheckForUpdateImplLogger.Info("The local index file is the most updated one")
 			}
 
 			time.Sleep(time.Second * 60)
@@ -163,7 +168,7 @@ func main() {
 	}()
 	//
 
-	// Go routine 2 that is alsways looking if the user has requested the update
+	// Go routine 2 that is always looking if the user has requested the update
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -174,7 +179,7 @@ func main() {
 			updateRequested, err := ReadUpdateRequested(jsonFilePath)
 
 			if err != nil {
-				generalLog.Printf("There has been an error while reading the Update Requested Value: %f. \n", err)
+				ApplyReleaseImplLogger.Error(err, "There has been an error while reading the update requested Value")
 			}
 
 			// if the user has pushed the botton, the new server should be executed.
@@ -182,51 +187,51 @@ func main() {
 
 				var data map[string]indexInfo
 
-				generalLog.Printf("The index file is located in: %s \n", targetIndexFile)
+				ApplyReleaseImplLogger.Info("The index file is located in: %s ", targetIndexFile)
 
 				// read the actual JSON file content
 				fileContent, err := os.ReadFile(targetIndexFile)
 				if err != nil {
-					generalLog.Printf("Fail to read the index file \n")
+					ApplyReleaseImplLogger.Error(err, "Fail to read the index file")
 				}
 
 				// parse JSON into the map
 				err = json.Unmarshal(fileContent, &data)
 				if err != nil {
-					generalLog.Printf("\U0001F534Error parsing JSON: %v\U0001F534", err)
+					ApplyReleaseImplLogger.Error(err, "Error parsing JSON")
 				}
 
 				// getting service path
 				servicePath := data[service].Path
 
 				// download the artifact without specifying the file type
-				err = downloadArtifact(serviceAccountKeyPath, servicePath, newBinaryPath, generalLog)
+				err = downloadArtifact(serviceAccountKeyPath, servicePath, newBinaryPath, ApplyReleaseImplLogger)
 				if err != nil {
-					generalLog.Printf("\U0001F534Failed to download binary: %v\U0001F534\n", err)
+					ApplyReleaseImplLogger.Error(err, "Failed to download binary")
 					os.Exit(1)
 				}
 
 				// make sure the new binary is executable
 				err = os.Chmod(newBinaryPath, 0755)
 				if err != nil {
-					generalLog.Printf("Failed to set executable permissions \n")
+					ApplyReleaseImplLogger.Error(err, "Failed to set executable permissions")
 				}
 
 				// verifying that the downloaded file is integrate and authentic
-				err = verifyingDownloadedFile(targetIndexFile, newBinaryPath, generalLog)
+				err = verifyingDownloadedFile(targetIndexFile, newBinaryPath, ApplyReleaseImplLogger)
 
 				if err == nil {
 					// Replace old binary
 					err = os.Rename(newBinaryPath, destinationPath)
 					if err != nil {
-						generalLog.Printf("Failed to rename the binary \n")
+						ApplyReleaseImplLogger.Error(err, "Failed to rename the binary")
 					}
 				}
 
 				serviceVersion := data[service].Version
 
 				// unziping and setting the update status to 0
-				unzipAndSetStatus(serviceVersion, generalLog)
+				unzipAndSetStatus(serviceVersion, ApplyReleaseImplLogger)
 
 				targetFileService := filepath.Join(SALTOLocation, serviceVersion, "bin", service)
 				targetFileConfig := filepath.Join(SALTOLocation, serviceVersion, "config", "nebula-on-premise-linux.yml")
@@ -235,51 +240,50 @@ func main() {
 
 				// symlink for service
 				if err := updateSymlink(targetFileService, linkNameService); err != nil {
-					generalLog.Printf("Error updating symlink:", err)
+					ApplyReleaseImplLogger.Error(err, "Error updating symlink")
 					return
 				}
-				generalLog.Printf("Symlink updated to point to:", targetFileService)
+				ApplyReleaseImplLogger.Info("Symlink updated to point to")
 
 				// symlink for config
 				if err := updateSymlink(targetFileConfig, linkNameConfig); err != nil {
-					generalLog.Printf("Error updating symlink:", err)
+					ApplyReleaseImplLogger.Error(err, "Error updating symlink")
 					return
 				}
-				generalLog.Printf("Symlink updated to point to:", targetFileConfig)
+				ApplyReleaseImplLogger.Info("Symlink updated to point to:", targetFileConfig)
 
 				// 2) Reload and restart the service
 				ctx := context.Background()
 				if err := reloadAndRestartUnit(ctx, "nebula-on-premise-linux.service"); err != nil {
-					generalLog.Printf("Error restarting service:", err)
+					ApplyReleaseImplLogger.Error(err, "Error restarting service")
 					return
 				}
 
-				generalLog.Printf("Service reloaded and restarted successfully!")
+				ApplyReleaseImplLogger.Info("Service reloaded and restarted successfully!")
 
 				// Delete the previous version's folder
 
-				generalLog.Printf("🟣The previous version is %s🟣\n", previousVersion)
+				ApplyReleaseImplLogger.Info("🟣The previous version is %s🟣", previousVersion)
 
 				previousVersionPath := filepath.Join(SALTOLocation, previousVersion)
 				err = os.RemoveAll(previousVersionPath)
 
-				generalLog.Printf("🟠Deleting previous version folder🟠\n")
+				ApplyReleaseImplLogger.Info("🟠Deleting previous version folder🟠")
 				if err != nil {
-					err = fmt.Errorf("error deleting the previous version's folder: %w", err)
-					generalLog.Printf("Error: %w \n", err) // Print the error or handle it appropriately
+					ApplyReleaseImplLogger.Error(err, "Error deleting the previous folder")
 				}
 
 				// The previus version is what has been stored in current version
 				previousVersion = currentVersion
 
-				generalLog.Printf("🟣The previous version is %s🟣\n", previousVersion)
+				ApplyReleaseImplLogger.Info("🟣The previous version is %s🟣")
 
 				currentVersion, err = readCurrentVersion()
 
-				generalLog.Printf("🟣Current Version is %s🟣\n", currentVersion)
+				ApplyReleaseImplLogger.Info("🟣Current Version is %s🟣", currentVersion)
 
 				if err != nil {
-					generalLog.Printf("Error reading the current version")
+					ApplyReleaseImplLogger.Error(err, "Error reading the current version")
 				}
 
 			}
@@ -533,10 +537,10 @@ func ReadUpdateRequested(jsonFilePath string) (int, error) {
 }
 
 // Downloading the artifact indicated in general-service.json
-func downloadArtifact(serviceAccountKeyPath, servicePath, newBinaryPath string, generalLog *log.Logger) error {
+func downloadArtifact(serviceAccountKeyPath, servicePath, newBinaryPath string, ApplyReleaseImplLogger metadata.Logger) error {
 	// Authenticate using the service account key
 	ctx := context.Background()
-	creds, err := google.CredentialsFromJSON(ctx, readFile(serviceAccountKeyPath, generalLog), "https://www.googleapis.com/auth/cloud-platform")
+	creds, err := google.CredentialsFromJSON(ctx, readFile(serviceAccountKeyPath, ApplyReleaseImplLogger), "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
 		return fmt.Errorf("failed to load service account credentials: %w", err)
 	}
@@ -577,7 +581,7 @@ func downloadArtifact(serviceAccountKeyPath, servicePath, newBinaryPath string, 
 			}
 		}
 	}
-	generalLog.Printf("Saving file as: %s\n", fileName)
+	ApplyReleaseImplLogger.Info("Saving file as: %s", fileName)
 
 	// Write the response to a file
 	out, err := os.Create(fileName)
@@ -591,17 +595,17 @@ func downloadArtifact(serviceAccountKeyPath, servicePath, newBinaryPath string, 
 }
 
 // readFile reads the content of the service account key JSON file.
-func readFile(path string, generalLog *log.Logger) []byte {
+func readFile(path string, ApplyReleaseImplLogger metadata.Logger) []byte {
 	content, err := os.ReadFile(path)
 	if err != nil {
-		generalLog.Printf("\U0001F534Error reading file %s: %v\U0001F534\n", path, err)
+		ApplyReleaseImplLogger.Error(err, "Error reading file")
 		os.Exit(1)
 	}
 	return content
 }
 
 // verifyingDownloadedFile verifies a file.
-func verifyingDownloadedFile(targetIndexFile, DonwloadedFilePath string, generalLog *log.Logger) error {
+func verifyingDownloadedFile(targetIndexFile, DonwloadedFilePath string, ApplyReleaseImplLogger metadata.Logger) error {
 
 	var data map[string]indexInfo
 
@@ -614,28 +618,28 @@ func verifyingDownloadedFile(targetIndexFile, DonwloadedFilePath string, general
 	// Parse JSON into the map
 	err = json.Unmarshal(fileContent, &data)
 	if err != nil {
-		generalLog.Printf("\U0001F534Error parsing JSON: %v\U0001F534", err)
+		ApplyReleaseImplLogger.Error(err, "Error parsing JSON")
 		return err
 	}
 
 	indexHash := data[service].Hashes.Sha256
 
-	generalLog.Printf("The hash from the nebula-service-index.json is %s", indexHash)
+	ApplyReleaseImplLogger.Info("The hash from the nebula-service-index.json is %s", indexHash)
 
 	// Computing the hash of the downloaded file
 
 	// Compute the SHA256 hash
 	downloadedFilehash, err := ComputeSHA256(DonwloadedFilePath)
 
-	generalLog.Printf("Downloaded file hash is: %s\n", downloadedFilehash)
+	ApplyReleaseImplLogger.Info("Downloaded file hash is: %s", downloadedFilehash)
 
 	if err != nil {
-		generalLog.Printf("\U0001F534Error computing hash: %v\U0001F534\n", err)
+		ApplyReleaseImplLogger.Error(err, "Error computing hash")
 		return fmt.Errorf("error while computing the hash")
 	}
 
 	if indexHash == downloadedFilehash {
-		generalLog.Printf("\U0001F7E2The target file has been downloaded successfully!\U0001F7E2\n")
+		ApplyReleaseImplLogger.Info("The target file has been downloaded successfully!")
 	} else {
 		return fmt.Errorf("there has been an error while downloading the file, the hashes do not match")
 	}
@@ -666,16 +670,16 @@ func ComputeSHA256(filePath string) (string, error) {
 }
 
 // Unzipping the downloaded target and setting the update status to 0.
-func unzipAndSetStatus(serviceVersion string, generalLog *log.Logger) {
+func unzipAndSetStatus(serviceVersion string, ApplyReleaseImplLogger metadata.Logger) {
 
 	destinationPathUnzip := ""
 	destinationPathUnzip = fmt.Sprintf("%s/%s", SALTOLocation, serviceVersion)
 
 	// Unzipping the downloaded target
 	if err := Unzip(destinationPath, destinationPathUnzip); err != nil {
-		generalLog.Printf("❌ Error unzipping new binary: %v", err)
+		ApplyReleaseImplLogger.Error(err, "❌Error unzipping new binary❌")
 	} else {
-		generalLog.Printf("✅ Successfully unzipped the new binary.")
+		ApplyReleaseImplLogger.Info("✅Successfully unzipped the new binary✅")
 	}
 
 	// Removing what has been unzipped
