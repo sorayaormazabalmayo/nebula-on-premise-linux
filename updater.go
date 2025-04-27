@@ -244,7 +244,7 @@ func main() {
 					ApplyReleaseImplLogger.Error(err, "Error updating symlink")
 					return
 				}
-				ApplyReleaseImplLogger.Info("Symlink updated to point to")
+				ApplyReleaseImplLogger.Info("Symlink updated to point to:", targetFileService)
 
 				// symlink for config
 				if err := updateSymlink(targetFileConfig, linkNameConfig); err != nil {
