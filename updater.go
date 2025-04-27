@@ -120,8 +120,8 @@ func main() {
 	if err != nil {
 		CheckForUpdateImplLogger.Error(err, "❌There has been an error while reading the current version❌")
 	}
-
-	CheckForUpdateImplLogger.Info("🟣Current Version is %s🟣", currentVersion)
+	msg := fmt.Sprintf("🟣Current Version is %s🟣", currentVersion)
+	CheckForUpdateImplLogger.Info(msg)
 
 	// getting the previous version folder
 	previousVersion, err := getPreviousVersion(currentVersion)
@@ -130,7 +130,8 @@ func main() {
 		CheckForUpdateImplLogger.Error(err, "❌There has been an error while reading the previous version❌")
 	}
 
-	CheckForUpdateImplLogger.Info("🟣Previous Version is %s🟣", previousVersion)
+	msg = fmt.Sprintf("🟣Previous Version is %s🟣", previousVersion)
+	CheckForUpdateImplLogger.Info(msg)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -186,8 +187,8 @@ func main() {
 			if updateRequested == 1 {
 
 				var data map[string]indexInfo
-
-				ApplyReleaseImplLogger.Info("The index file is located in: %s ", targetIndexFile)
+				msg = fmt.Sprintf("The index file is located in: %s ", targetIndexFile)
+				ApplyReleaseImplLogger.Info(msg)
 
 				// read the actual JSON file content
 				fileContent, err := os.ReadFile(targetIndexFile)
@@ -263,7 +264,8 @@ func main() {
 
 				// Delete the previous version's folder
 
-				ApplyReleaseImplLogger.Info("🟣The previous version is %s🟣", previousVersion)
+				msg = fmt.Sprintf("🟣The previous version is %s🟣", previousVersion)
+				ApplyReleaseImplLogger.Info(msg)
 
 				previousVersionPath := filepath.Join(SALTOLocation, previousVersion)
 				err = os.RemoveAll(previousVersionPath)
@@ -276,11 +278,13 @@ func main() {
 				// The previus version is what has been stored in current version
 				previousVersion = currentVersion
 
-				ApplyReleaseImplLogger.Info("🟣The previous version is %s🟣")
+				msg = fmt.Sprintf("🟣The previous version is %s🟣", previousVersion)
+				ApplyReleaseImplLogger.Info(msg)
 
 				currentVersion, err = readCurrentVersion()
 
-				ApplyReleaseImplLogger.Info("🟣Current Version is %s🟣", currentVersion)
+				msg = fmt.Sprintf("🟣Current Version is %s🟣", currentVersion)
+				ApplyReleaseImplLogger.Info(msg)
 
 				if err != nil {
 					ApplyReleaseImplLogger.Error(err, "Error reading the current version")
