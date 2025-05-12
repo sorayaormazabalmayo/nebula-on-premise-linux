@@ -96,7 +96,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # Step 2 : Configure Go for Private odules
+      # Step 2 : Configure Go for Private modules
       - name: Simulating that some testings and checks are done
         run: |
           # Getting the tag name
